@@ -1,0 +1,14 @@
+Package: pTReCASE
+Type: Package
+Title: Simultaneous tumor- and normal expression QTL modeling in bulk
+        Tumor RNA-seq samples
+Version: 0.99.0
+Date: 2018-03-29
+Author: Douglas Roy Wilson, Jr.
+Maintainer: Wei Sun <wsun@fredhutch.org>
+Description: The pTReCASE package simultaneously estimates tumor- and normal-specific eQTL in RNA-seq expression data from bulk tumor tissues. pTReCASE relies upon the provision of germline haplotypes and a measure of tumor purity in order to complete estimation.
+License: GPL (>=2.0)
+Depends: Rcpp (>= 0.10.4), RcppEigen (>= 0.3.2.0.2)
+LinkingTo: Rcpp, RcppEigen
+Packaged: 2019-03-08 22:02:38 UTC; wsun
+NeedsCompilation: yes

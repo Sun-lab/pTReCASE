@@ -1,0 +1,5 @@
+useDynLib(pTReCASE)
+exportPattern("^[[:alpha:]]+")
+
+import(Rcpp)
+import(RcppEigen)
