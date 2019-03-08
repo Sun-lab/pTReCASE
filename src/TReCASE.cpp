@@ -39,7 +39,8 @@ void CisTrans_Score(double* score_val, double* pval, double* ScoreVec_,
                     double* ex1, double* ex2, double* rhosAS, int M, int n, double* Xmat_,
                     double* ctvec, double* lgct, double* rct_vec, double* lgrct, double* pvec, double* tmpctvec, double* tmprctvec,
                     double* Dmu_, double* deps_, double* offset_, double* Beta_,
-                    double* outvec, double psi, double phi, double kappa, double eta, double gamma, int maxAS);
+                    double* outvec, double psi, double phi, double kappa, double eta, double gamma, int maxAS,double* ZeroMat_F_,
+                    double* OIMat_);
  
  void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
                         double* mu_, double* musq_,double* Delta1_,double* Delta2_,double* Delta3_,
@@ -49,7 +50,7 @@ void CisTrans_Score(double* score_val, double* pval, double* ScoreVec_,
                         double* ctvec, double* lgct, double* rct_vec, double* lgrct, double* pvec, double* tmpctvec, double* tmprctvec,
                         double* Dmu_, double* deps_, double* offset_, double* Beta_,
                         double* outvec, double psi, double phi, double kappa, double eta, double gamma, int maxAS,
-                        double* Ibt_, double* Iet_, double* Itt_); 
+                        double* Ibt_, double* Iet_, double* Itt_,double* ZeroMat_F_,double* OIMat_); 
   
 /*** Necessary for the Inclusion of the VMMIN backup routine ***/
 static double ** Lmatrix(int n)
@@ -155,14 +156,14 @@ int TReCASE_sfit(double* para0, double* ex1, double* ex2, double* X, int M,
   double psi_curr = 0.5,
          psi_old  = 0.5;
   
-  lower_psi[0] = -50;
-  upper_psi[0] = 100;
+  lower_psi[0] = log(1e-5);
+  upper_psi[0] = log(1e5);
   
-  lower_psi[1] = -50;
-  upper_psi[1] = 100;
+  lower_psi[1] = log(1e-5);
+  upper_psi[1] = log(1e5);
   
-  nbd_psi[0] = 0;
-  nbd_psi[1] = 0;
+  nbd_psi[0] = 2;
+  nbd_psi[1] = 2;
   
   curr_parap[0] = log(0.5);
   curr_parap[1] = log(0.5);
@@ -748,6 +749,9 @@ RcppExport SEXP TReCASE_mtest_only(SEXP Y_, SEXP Y1_, SEXP Y2_, SEXP Z_, SEXP X_
 	Rcpp::NumericMatrix Dmu(n_subj,3);
 	Rcpp::NumericMatrix deps(n_subj,3);
 	
+	Rcpp::NumericMatrix ZeroMat_F(n_subj,n_subj);
+	Rcpp::NumericMatrix OIMat((M+7),(M+7));
+	
 	/*** L-BFGS-B 1 Parameters ***/
 	int lmm = 5, npara = 3;
 	double *wa, *g1;
@@ -1015,7 +1019,7 @@ RcppExport SEXP TReCASE_mtest_only(SEXP Y_, SEXP Y1_, SEXP Y2_, SEXP Z_, SEXP X_
                                Dmu.begin(), deps.begin(),offset.begin(),Betatmp.begin(),
                                outvec.begin(),Rcpp::as<double>(List1["Psi"]),Rcpp::as<double>(List1["Phi"]),
                                exp(KEG[0]),exp(KEG[1]),exp(KEG[2]),maxAS,
-                               Ibt.begin(),Iet.begin(),&Itt);
+                               Ibt.begin(),Iet.begin(),&Itt,ZeroMat_F.begin(),OIMat.begin());
 			        }
 			        
 			        if(Obs_Score==0||(Obs_Score==1&&CT_score<0)){
@@ -1028,10 +1032,10 @@ RcppExport SEXP TReCASE_mtest_only(SEXP Y_, SEXP Y1_, SEXP Y2_, SEXP Z_, SEXP X_
                             ctvec.begin(),lctvec.begin(),rctvec.begin(),lrctvec.begin(),p_vec.begin(),tmpctvec.begin(),tmprctvec.begin(),
                             Dmu.begin(), deps.begin(),offset.begin(),Betatmp.begin(),
                             outvec.begin(),Rcpp::as<double>(List1["Psi"]),Rcpp::as<double>(List1["Phi"]),
-                            exp(KEG[0]),exp(KEG[1]),exp(KEG[2]),maxAS);
+                            exp(KEG[0]),exp(KEG[1]),exp(KEG[2]),maxAS,ZeroMat_F.begin(),OIMat.begin());
 			        }
 			        
-			        if(CT_score<0){
+			        if((CT_score<0)){
 			          CT_Fail = 2;
 			        }
 			      } else {
@@ -1241,6 +1245,7 @@ RcppExport SEXP TReCASE_mtest_only(SEXP Y_, SEXP Y1_, SEXP Y2_, SEXP Z_, SEXP X_
   			/* End a single Gene-SNP Pair test. Reset the the value of hte
   			 * Score Test P-Value */
   			CT_pval = 1.0;
+  			CT_Fail = 5;
 			}
 		}
 	}

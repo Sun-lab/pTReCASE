@@ -611,7 +611,7 @@ void CisTrans_Score(double* score_val, double* pval, double* ScoreVec_,
                     double* ex1, double* ex2, double* rhosAS, int M, int n, double* Xmat_,
                     double* ctvec, double* lgct, double* rct_vec, double* lgrct, double* pvec, double* tmpctvec, double* tmprctvec,
                     double* Dmu_, double* deps_, double* offset_, double* Beta_,
-                    double* outvec, double psi, double phi, double kappa, double eta, double gamma, int maxAS){
+                    double* outvec, double psi, double phi, double kappa, double eta, double gamma, int maxAS, double* ZeroMat_F_, double* OIMat_){
   // Eigen: Mean and Variance Pieces //
   Eigen::Map<Eigen::VectorXd> mu(mu_,n);
   Eigen::Map<Eigen::VectorXd> musq(musq_,n);
@@ -639,21 +639,25 @@ void CisTrans_Score(double* score_val, double* pval, double* ScoreVec_,
   
   Eigen::Map<Eigen::MatrixXd> Dmu(Dmu_,n,3);
   Eigen::Map<Eigen::MatrixXd> deps(deps_,n,3);
+  
+  Eigen::Map<Eigen::MatrixXd> ZeroMat_F(ZeroMat_F_,n,n);
+  Eigen::Map<Eigen::MatrixXd> OIMat(OIMat_,(M+6),(M+6));
     
-  // This initialization works for any time the test is used after the first time
-  // Need to ensure that the original matrices from which these arise are set to 
-  // 0 for the first implementation.
-  Ipp *= 0;
-  Ipa *= 0;
-  Iaa *= 0;
-  Iea *= 0;
-  Iep *= 0;
-  M1 *= 0;
-  M2 *= 0;
-  ScoreVec *= 0;
-  Delta1 *= 0;
-  Delta2 *= 0;
-  Delta3 *= 0;
+    Ibb.block(0,0,M,M) = ZeroMat_F.block(0,0,M,M);
+    Iee.block(0,0,3,3) = ZeroMat_F.block(0,0,3,3);
+    Ipp.block(0,0,1,1) = ZeroMat_F.block(0,0,1,1);
+    Ipa.block(0,0,1,2) = ZeroMat_F.block(0,0,1,2);
+    Iaa.block(0,0,2,2) = ZeroMat_F.block(0,0,2,2);
+    Iea.block(0,0,3,2) = ZeroMat_F.block(0,0,3,2);
+    Iep.block(0,0,3,1) = ZeroMat_F.block(0,0,3,1);
+    M1.block(0,0,(M+5),(M+5)) = ZeroMat_F.block(0,0,(M+5),(M+5));
+    M2.block(0,0,(M+5),2) = ZeroMat_F.block(0,0,(M+5),2);
+    ScoreVec.block(0,0,2,1) = ZeroMat_F.block(0,0,2,1);
+    Delta1.block(0,0,n,n) = ZeroMat_F.block(0,0,n,n);
+    Delta2.block(0,0,n,n) = ZeroMat_F.block(0,0,n,n);
+    Delta3.block(0,0,n,n) = ZeroMat_F.block(0,0,n,n);
+    OIMat.block(0,0,(M+7),(M+7)) = ZeroMat_F.block(0,0,(M+6),(M+6));
+    
   
   //TReC: Incidentals //
   double pi, nu0, delta, ci, dci_dkappa, epsi;
@@ -966,6 +970,11 @@ void CisTrans_Score(double* score_val, double* pval, double* ScoreVec_,
 //  out_data << "Iaa-Blah : \n" << Iaa-M2.transpose()*M1.inverse()*M2 << "\n";
 //  out_data.close();
   
+  OIMat.block(0,0,(M+4),(M+4)) = M1;
+  OIMat.block(0,(M+4),(M+4),2) = M2;
+  OIMat.block((M+4),0,2,(M+4)) = M2.transpose();
+  OIMat.block((M+4),(M+4),2,2) = Iaa;
+  
   // Checking Invertibility
   Eigen::JacobiSVD<Eigen::MatrixXd> svd1(M1);
   Eigen::JacobiSVD<Eigen::MatrixXd> svd2(Iaa-M2.transpose()*M1.inverse()*M2);
@@ -974,8 +983,13 @@ void CisTrans_Score(double* score_val, double* pval, double* ScoreVec_,
   
   //Rprintf("Checking Condition Numbers: Cond1- %.10f // Cond2- %.10f\n",cond1,cond2);
   
-  // Score Test Values Computed //
-  if((cond1>(1/DBL_EPSILON))||(cond2>(1/DBL_EPSILON))){
+  // Checking Positive Definiteness:
+  Eigen::LLT<Eigen::MatrixXd> lltOfA(OIMat);
+  
+  if(lltOfA.info()==Eigen::NumericalIssue){
+    *score_val = -6.0;
+    *pval = 1.0;
+  } else if((cond1>(1/DBL_EPSILON))||(cond2>(1/DBL_EPSILON))){
     *score_val = -5.0;
     *pval = 1.0;
   } else {
@@ -983,6 +997,10 @@ void CisTrans_Score(double* score_val, double* pval, double* ScoreVec_,
     *pval = R::pchisq(*score_val,2,0,0);
   }
   
+  if(std::isnan(*score_val)){
+    *score_val = -6.0;
+    *pval = 1.0;
+  }
   // This way if the score is -5.0, we know that we have invertibility issues.
 }
 
@@ -995,12 +1013,13 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
                        double* ctvec, double* lgct, double* rct_vec, double* lgrct, double* pvec, double* tmpctvec, double* tmprctvec,
                        double* Dmu_, double* deps_, double* offset_, double* Beta_,
                        double* outvec, double psi, double phi, double kappa, double eta, double gamma, int maxAS,
-                       double* Ibt_, double* Iet_, double* Itt_){
+                       double* Ibt_, double* Iet_, double* Itt_,double* ZeroMat_F_, double* OIMat_){
   // Eigen: Mean and Variance Pieces //
   Eigen::Map<Eigen::VectorXd> Yv((ex1+9),n);
   Eigen::Map<Eigen::VectorXd> mu(mu_,n);
   Eigen::Map<Eigen::VectorXd> musq(musq_,n);
   Eigen::VectorXd vari(n);
+  //Eigen::MatrixXd inverseMat(2,2);
   
   // Eigen: X Matrix Input Pieces //
   Eigen::Map<Eigen::MatrixXd> Xmat(Xmat_,n,M);
@@ -1024,30 +1043,36 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
   Eigen::Map<Eigen::MatrixXd> M1(M1_,(M+5),(M+5));
   Eigen::Map<Eigen::MatrixXd> M2(M2_,(M+5),2);
   Eigen::Map<Eigen::Matrix<double,2,1> > ScoreVec(ScoreVec_);
+  Eigen::Map<Eigen::MatrixXd> OIMat(OIMat_,(M+7),(M+7));
   
   Eigen::Map<Eigen::MatrixXd> Dmu(Dmu_,n,3);
   Eigen::Map<Eigen::MatrixXd> deps(deps_,n,3);
   
+  Eigen::Map<Eigen::MatrixXd> ZeroMat_F(ZeroMat_F_,n,n);
+  
   // This initialization works for any time the test is used after the first time
   // Need to ensure that the original matrices from which these arise are set to 
   // 0 for the first implementation.
-  Iee *= 0;
-  Itt *= 0;
-  Ipp *= 0;
-  Ipa *= 0;
-  Iaa *= 0;
-  Iea *= 0;
-  Iep *= 0;
-  M1 *= 0;
-  M2 *= 0;
-  ScoreVec *= 0;
-  Delta1 *= 0;
-  Delta2 *= 0;
-  Delta3 *= 0;
+  Ibb.block(0,0,M,M) = ZeroMat_F.block(0,0,M,M);
+  Iee.block(0,0,3,3) = ZeroMat_F.block(0,0,3,3);
+  Itt.block(0,0,1,1) = ZeroMat_F.block(0,0,1,1);
+  Ipp.block(0,0,1,1) = ZeroMat_F.block(0,0,1,1);
+  Ipa.block(0,0,1,2) = ZeroMat_F.block(0,0,1,2);
+  Iaa.block(0,0,2,2) = ZeroMat_F.block(0,0,2,2);
+  Iea.block(0,0,3,2) = ZeroMat_F.block(0,0,3,2);
+  Iep.block(0,0,3,1) = ZeroMat_F.block(0,0,3,1);
+  M1.block(0,0,(M+5),(M+5)) = ZeroMat_F.block(0,0,(M+5),(M+5));
+  M2.block(0,0,(M+5),2) = ZeroMat_F.block(0,0,(M+5),2);
+  ScoreVec.block(0,0,2,1) = ZeroMat_F.block(0,0,2,1);
+  Delta1.block(0,0,n,n) = ZeroMat_F.block(0,0,n,n);
+  Delta2.block(0,0,n,n) = ZeroMat_F.block(0,0,n,n);
+  Delta3.block(0,0,n,n) = ZeroMat_F.block(0,0,n,n);
+  OIMat.block(0,0,(M+7),(M+7)) = ZeroMat_F.block(0,0,(M+7),(M+7));
   
   //TReC: Incidentals //
   double pi, nu0, delta, ci, dci_dkappa, epsi, C_comp,
          vphi = 1.0/phi,
+         dci_dkappa2,
          depsi_dkappa2,
          mfact;
   int n0   = ceil(ex1[2]-0.5),
@@ -1083,26 +1108,22 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     delta = 1.0 - pi + pi*kappa;
     
     ci = (pi*kappa)/delta;
-    dci_dkappa = ci*(1.0-ci)*(1.0/kappa);
+    dci_dkappa = ci*(1.0-ci);
     
     // Setting up Deps
     epsi      = (1.0-ci)*eta+ci*gamma;
     deps(i,0) = (gamma-eta)*dci_dkappa;
-    deps(i,1) = 1.0-ci;
-    deps(i,2) = ci;
+    deps(i,1) = (1.0-ci)*eta;
+    deps(i,2) = (ci)*gamma;
     
     // Setting up the mean derivatives
-    Dmu(i,0) = nu0*pi;
+    Dmu(i,0) = nu0*pi*kappa;
     Dmu(i,1) = 0;
     Dmu(i,2) = 0;
     
     // Adding to Iee
-    //mfact = ((Yv(i)-mu(i))/vari(i));
-    //Iee(0,0) -= 0;
-    //Iee(0,1) -= 0;
-    //Iee(0,2) -= 0;
-    //Iee(1,0) -= Iee(0,1);
-    //Iee(2,0) -= Iee(0,2);
+    mfact = ((Yv(i)-mu(i))/vari(i));
+    Iee(0,0) -= mfact*nu0*(pi*kappa);
     
     // Adding to Itt
     C_comp = R::digamma(Yv(i)+vphi)-R::digamma(vphi)-log(1.0+phi*mu(i));
@@ -1116,26 +1137,29 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     delta = 1.0 - pi + pi*kappa;
     
     ci = (pi*kappa)/delta;
-    dci_dkappa = ci*(1.0-ci)*(1.0/kappa);
-    depsi_dkappa2 = (gamma-eta)*((1.0-2*ci)*(1.0/kappa)*dci_dkappa-ci*(1.0-ci)*(1.0/(kappa*kappa)));
+    dci_dkappa = ci*(1.0-ci);
+    dci_dkappa2 = (1.0-2*ci)*dci_dkappa;
+    depsi_dkappa2 = (gamma-eta)*dci_dkappa2;
     
     // Setting up Deps
     epsi      = (1.0-ci)*eta+ci*gamma;
     deps(i,0) = (gamma-eta)*dci_dkappa;
-    deps(i,1) = 1.0-ci;
-    deps(i,2) = ci;
+    deps(i,1) = (1.0-ci)*eta;
+    deps(i,2) = ci*gamma;
     
     // Setting up the mean derivatives
-    Dmu(i,0) = nu0*(pi*0.5*(1.0+epsi)+delta*0.5*deps(i,0));
+    Dmu(i,0) = nu0*(pi*kappa*0.5*(1.0+epsi)+delta*0.5*deps(i,0));
     Dmu(i,1) = nu0*delta*0.5*deps(i,1);
     Dmu(i,2) = nu0*delta*0.5*deps(i,2);
     
     // Adding to Iee
     mfact = ((Yv(i)-mu(i))/vari(i));
     
-    Iee(0,0) -= mfact*nu0*(pi*deps(i,0)+delta*0.5*depsi_dkappa2);
-    Iee(0,1) -= mfact*nu0*(pi*0.5*deps(i,1)-delta*0.5*dci_dkappa);
-    Iee(0,2) -= mfact*nu0*(pi*0.5*deps(i,2)+delta*0.5*dci_dkappa);
+    Iee(0,0) -= mfact*nu0*(pi*kappa*(1.0+epsi)*0.5+pi*kappa*deps(i,0)+delta*0.5*depsi_dkappa2);
+    Iee(0,1) -= mfact*nu0*(pi*kappa*0.5*deps(i,1)-delta*0.5*dci_dkappa*eta);
+    Iee(0,2) -= mfact*nu0*(pi*kappa*0.5*deps(i,2)+delta*0.5*dci_dkappa*gamma);
+    Iee(1,1) -= mfact*nu0*delta*0.5*(1-ci)*eta;
+    Iee(2,2) -= mfact*nu0*delta*0.5*ci*gamma;
 
     // Adding to Itt
     C_comp = R::digamma(Yv(i)+vphi)-R::digamma(vphi)-log(1.0+phi*mu(i));
@@ -1149,26 +1173,29 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     delta = 1.0 - pi + pi*kappa;
     
     ci = (pi*kappa)/delta;
-    dci_dkappa = ci*(1.0-ci)*(1.0/kappa);
-    depsi_dkappa2 = (gamma-eta)*((1.0-2*ci)*(1.0/kappa)*dci_dkappa-ci*(1.0-ci)*(1.0/(kappa*kappa)));
+    dci_dkappa = ci*(1.0-ci);
+    dci_dkappa2 = (1.0-2*ci)*dci_dkappa;
+    depsi_dkappa2 = (gamma-eta)*dci_dkappa2;
     
     // Setting up Deps
     epsi      = (1.0-ci)*eta+ci*gamma;
     deps(i,0) = (gamma-eta)*dci_dkappa;
-    deps(i,1) = 1.0-ci;
-    deps(i,2) = ci;
+    deps(i,1) = (1.0-ci)*eta;
+    deps(i,2) = ci*gamma;
     
     // Setting up the mean derivatives
-    Dmu(i,0) = nu0*(pi*epsi+delta*deps(i,0));
+    Dmu(i,0) = nu0*(pi*kappa*epsi+delta*deps(i,0));
     Dmu(i,1) = nu0*delta*deps(i,1);
     Dmu(i,2) = nu0*delta*deps(i,2);
     
     // Adding to Iee
     mfact = ((Yv(i)-mu(i))/vari(i));
     
-    Iee(0,0) -= mfact*nu0*(2*pi*deps(i,0)+delta*depsi_dkappa2);
-    Iee(0,1) -= mfact*nu0*(pi*deps(i,1)-delta*dci_dkappa);
-    Iee(0,2) -= mfact*nu0*(pi*deps(i,2)+delta*dci_dkappa);
+    Iee(0,0) -= mfact*nu0*(pi*kappa*(epsi)+2*pi*kappa*deps(i,0)+delta*depsi_dkappa2);
+    Iee(0,1) -= mfact*nu0*(pi*kappa*deps(i,1)-delta*dci_dkappa*eta);
+    Iee(0,2) -= mfact*nu0*(pi*kappa*deps(i,2)+delta*dci_dkappa*gamma);
+    Iee(1,1) -= mfact*nu0*delta*(1-ci)*eta;
+    Iee(2,2) -= mfact*nu0*delta*ci*gamma;
     
     // Adding to Itt
     C_comp = R::digamma(Yv(i)+vphi)-R::digamma(vphi)-log(1.0+phi*mu(i));
@@ -1179,6 +1206,7 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
   // Update the Iee components to match
   Iee(1,0) = Iee(0,1);
   Iee(2,0) = Iee(0,2);
+  Iee(2,1) = Iee(1,2);
   
   // TREC: Components //
   Delta1.diagonal() = (1.0/vari.array());
@@ -1200,6 +1228,9 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
   
   Ibt = Xmat.transpose()*Delta3.diagonal();
   Iet = Dmu.transpose()*Delta2.diagonal();
+  
+  //Testing again
+  /*std::cout << "Iee matrix: \n" << Iee << std::endl;*/
   
   // Checking Values for ease of use //
   /*std::cout << "Ibb matrix: \n" << Ibb << std::endl;
@@ -1224,7 +1255,8 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
   dpi_dgamma2, dpi_dgamma_dae, dpi_dgamma_dag,
   dpi_dae2, dpi_dae_dag,
   dpi_dag2,
-  depsi_de, depsi_dg, depsi_dkappa_dg, depsi_dkappa_de;
+  depsi_de, depsi_dg, depsi_dkappa_dg, depsi_dkappa_de, depsi_dkappa_dag, depsi_dkappa_dae,
+  depsi_dae, depsi_dag;
   double B, dB_dp, dB_dpi;
   int nAS = ceil(ex2[0]-0.5),
     nAS_0 = ceil(ex2[1]-0.5),
@@ -1245,9 +1277,9 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     outvec[3] = R::trigamma(vpsi*0.5+nTi-nBi);
     
     //Plugging In:
-    Ipp(0) -= (2)*vpsi*vpsi*vpsi*(dgvp-R::digamma((0.5*vpsi))-
+    Ipp(0) -= vpsi*(dgvp-R::digamma((0.5*vpsi))-
       R::digamma(vpsi+nTi)+0.5*(outvec[0]+outvec[1]));
-    Ipp(0) -= vpsi*vpsi*vpsi*vpsi*(trvp-0.5*R::trigamma(0.5*vpsi)-
+    Ipp(0) -= vpsi*vpsi*(trvp-0.5*R::trigamma(0.5*vpsi)-
       R::trigamma(vpsi+nTi)+0.25*(outvec[2]+outvec[3]));
     
   }
@@ -1259,8 +1291,8 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
   
     delta        = 1-rhosAS[i]+rhosAS[i]*kappa;
     ci           = (rhosAS[i]*kappa)/delta;
-    dci_dkappa   = ci*(1-ci)*(1.0/kappa);
-    d2ci_dkappa2 = (1.0-2*ci)*(1.0/kappa)*dci_dkappa-ci*(1.0-ci)*(1.0/(kappa*kappa));
+    dci_dkappa   = ci*(1-ci);
+    d2ci_dkappa2 = (1.0-2*ci)*dci_dkappa;
     epsi         = (1.0-ci)*eta+ci*gamma; 
     vepsi        = 1.0/(1.0+epsi);
     
@@ -1279,35 +1311,39 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     //dgpn = R::digamma(vpsi+nTi);
     //trpn = R::trigamma(vpsi+nTi);
     
-    depsi_dkappa_de = -dci_dkappa;
-    depsi_dkappa_dg = dci_dkappa;
-    depsi_de = (1.0-ci);
-    depsi_dg = ci;
+    depsi_dkappa_de  = -dci_dkappa*eta;
+    depsi_dkappa_dae = -dci_dkappa;
+    depsi_dkappa_dg  = dci_dkappa*gamma;
+    depsi_dkappa_dag = dci_dkappa;
+    depsi_de = (1.0-ci)*eta;
+    depsi_dae = (1.0-ci);
+    depsi_dg = ci*gamma;
+    depsi_dag = ci;
     
     dpi_dkappa        = vepsi*vepsi*(gamma-eta)*dci_dkappa;
-    dpi_dkappa2       = vepsi*vepsi*(gamma-eta)*(d2ci_dkappa2-2*vepsi*(gamma-eta)*dci_dkappa*dci_dkappa);
+    dpi_dkappa2       = vepsi*vepsi*((gamma-eta)*d2ci_dkappa2-2*vepsi*(gamma-eta)*(gamma-eta)*dci_dkappa*dci_dkappa);
     dpi_dkappa_deta   = vepsi*vepsi*(depsi_dkappa_de-2*vepsi*(gamma-eta)*dci_dkappa*depsi_de);
     dpi_dkappa_dgamma = vepsi*vepsi*(depsi_dkappa_dg-2*vepsi*(gamma-eta)*dci_dkappa*depsi_dg);
-    dpi_dkappa_dae    = vepsi*vepsi*(depsi_dkappa_de-2*vepsi*(gamma-eta)*dci_dkappa*depsi_de);
-    dpi_dkappa_dag    = vepsi*vepsi*(depsi_dkappa_dg-2*vepsi*(gamma-eta)*dci_dkappa*depsi_dg);
+    dpi_dkappa_dae    = vepsi*vepsi*(depsi_dkappa_dae-2*vepsi*(gamma-eta)*dci_dkappa*depsi_dae);
+    dpi_dkappa_dag    = vepsi*vepsi*(depsi_dkappa_dag-2*vepsi*(gamma-eta)*dci_dkappa*depsi_dag);
     
     dpi_deta        = vepsi*vepsi*depsi_de;
-    dpi_deta2       = -2*vepsi*vepsi*vepsi*depsi_de*depsi_de;
+    dpi_deta2       = -2*vepsi*vepsi*vepsi*depsi_de*depsi_de+vepsi*vepsi*depsi_de;
     dpi_deta_dgamma = -2*vepsi*vepsi*vepsi*depsi_de*depsi_dg;
-    dpi_deta_dae    = -2*vepsi*vepsi*vepsi*depsi_de*depsi_de;
-    dpi_deta_dag    = -2*vepsi*vepsi*vepsi*depsi_de*depsi_dg;
+    dpi_deta_dae    = -2*vepsi*vepsi*vepsi*depsi_de*depsi_dae;
+    dpi_deta_dag    = -2*vepsi*vepsi*vepsi*depsi_de*depsi_dag;
     
     dpi_dgamma     = vepsi*vepsi*depsi_dg;
-    dpi_dgamma2    = -2*vepsi*vepsi*vepsi*depsi_dg*depsi_dg;
-    dpi_dgamma_dae = -2*vepsi*vepsi*vepsi*depsi_dg*depsi_de;
-    dpi_dgamma_dag = -2*vepsi*vepsi*vepsi*depsi_dg*depsi_dg;
+    dpi_dgamma2    = -2*vepsi*vepsi*vepsi*depsi_dg*depsi_dg+vepsi*vepsi*depsi_dg;
+    dpi_dgamma_dae = -2*vepsi*vepsi*vepsi*depsi_dg*depsi_dae;
+    dpi_dgamma_dag = -2*vepsi*vepsi*vepsi*depsi_dg*depsi_dag;
     
-    dpi_dae     = dpi_deta;
-    dpi_dae2    = -2*vepsi*vepsi*vepsi*depsi_de*depsi_de;
-    dpi_dae_dag = -2*vepsi*vepsi*vepsi*depsi_de*depsi_dg;
+    dpi_dae     = vepsi*vepsi*depsi_dae;
+    dpi_dae2    = -2*vepsi*vepsi*vepsi*depsi_dae*depsi_dae;
+    dpi_dae_dag = -2*vepsi*vepsi*vepsi*depsi_dae*depsi_dag;
     
-    dpi_dag  = dpi_dgamma;
-    dpi_dag2 = -2*vepsi*vepsi*vepsi*depsi_dg*depsi_dg;
+    dpi_dag  = vepsi*vepsi*depsi_dag;
+    dpi_dag2 = -2*vepsi*vepsi*vepsi*depsi_dag*depsi_dag;
     
     // Finding Expectations
     
@@ -1322,11 +1358,11 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     dB_dp = pi*outvec[2]-ai_pi*outvec[3]-trpv*pi+ai_pi*trap;
     dB_dpi = outvec[2]+outvec[3]-trpv-trap;
     
-    Iep(0,0) -= -vpsi*vpsi*(B+vpsi*dB_dp)*dpi_dkappa;                      // kappa
-    Iep(1,0) -= -vpsi*vpsi*(B+vpsi*dB_dp)*dpi_deta;	                       // eta
-    Iep(2,0) -= -vpsi*vpsi*(B+vpsi*dB_dp)*dpi_dgamma;                      // gamma
-    Ipa(0,0) -= -vpsi*vpsi*(B+vpsi*dB_dp)*dpi_dae;                         // alpha_eta
-    Ipa(0,1) -= -vpsi*vpsi*(B+vpsi*dB_dp)*dpi_dag;                         // alpha_gamma
+    Iep(0,0) -= -vpsi*(B+vpsi*dB_dp)*dpi_dkappa;                      // kappa
+    Iep(1,0) -= -vpsi*(B+vpsi*dB_dp)*dpi_deta;	                       // eta
+    Iep(2,0) -= -vpsi*(B+vpsi*dB_dp)*dpi_dgamma;                      // gamma
+    Ipa(0,0) -= -vpsi*(B+vpsi*dB_dp)*dpi_dae;                         // alpha_eta
+    Ipa(0,1) -= -vpsi*(B+vpsi*dB_dp)*dpi_dag;                         // alpha_gamma
     Iea(0,0) -= vpsi*B*dpi_dkappa_dae+vpsi*vpsi*dB_dpi*dpi_dkappa*dpi_dae; // kappa alpha_eta
     Iea(0,1) -= vpsi*B*dpi_dkappa_dag+vpsi*vpsi*dB_dpi*dpi_dkappa*dpi_dag; // kappa alpha_gamma
     Iea(1,0) -= vpsi*B*dpi_deta_dae+vpsi*vpsi*dB_dpi*dpi_deta*dpi_dae;     // eta alpha_eta
@@ -1345,9 +1381,9 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     Iaa(0,1) -= vpsi*B*dpi_dae_dag + vpsi*vpsi*dB_dpi*dpi_dae*dpi_dag; // alpha_eta alpha_gamma
     Iaa(1,1) -= vpsi*B*dpi_dag2 + vpsi*vpsi*dB_dpi*dpi_dag*dpi_dag;    // alpha_gamma alpha_gamma
     
-    Ipp(0) -= (2)*vpsi*vpsi*vpsi*(R::digamma(vpsi)+pi*outvec[0]+ai_pi*outvec[1]-
+    Ipp(0) -= vpsi*(R::digamma(vpsi)+pi*outvec[0]+ai_pi*outvec[1]-
       pi*R::digamma(piv)-ai_pi*R::digamma(ai_piv)-R::digamma(vpsi+nTi));
-    Ipp(0) -= vpsi*vpsi*vpsi*vpsi*(R::trigamma(vpsi)+pi*pi*outvec[2]+ai_pi*ai_pi*outvec[3]-
+    Ipp(0) -= vpsi*vpsi*(R::trigamma(vpsi)+pi*pi*outvec[2]+ai_pi*ai_pi*outvec[3]-
       pi*pi*R::trigamma(piv)-ai_pi*ai_pi*R::trigamma(ai_piv)-
       R::trigamma(vpsi+nTi));
     
@@ -1356,6 +1392,11 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     ScoreVec(1,0) += vpsi*B*dpi_dag;
     
     // Checking where the NaN is introducted ( only want to call attention to the subject and their values):
+    /*std::cout << "dpi_dpar: Kappa (kappa eta gamma a_eta a_gamma)\n" << dpi_dkappa2  << " // " << dpi_dkappa_deta << " // " << dpi_dkappa_dgamma << " // " << dpi_dkappa_dae << " // " << dpi_dkappa_dag << std::endl;
+    std::cout << "dpi_dpar: Eta (kappa eta gamma a_eta a_gamma)\n" << dpi_dkappa_deta << " // " << dpi_deta2 << " // " << dpi_deta_dgamma << " // " << dpi_deta_dae << " // " << dpi_deta_dag << std::endl;
+    std::cout << "dpi_dpar: Gamma (kappa eta gamma a_eta a_gamma)\n" << dpi_dkappa_dgamma << " // " << dpi_deta_dgamma << " // " << dpi_dgamma2 << " // " << dpi_dgamma_dae <<" // " << dpi_dgamma_dag << std::endl;
+    std::cout << "dpi_dpar: A Eta (kappa eta gamma a_eta a_gamma)\n" << dpi_dkappa_dae << " // " << dpi_deta_dae << " // " << dpi_dgamma_dae << " // " << dpi_dae2 << " // " << dpi_dae_dag << std::endl;
+    std::cout << "dpi_dpar: A Gamma (kappa eta gamma a_eta a_gamma)\n" << dpi_dkappa_dag << " // " << dpi_deta_dag << " // " << dpi_dgamma_dag << " // " << dpi_dae_dag << " // " << dpi_dag2 << std::endl;*/
     //std::cout << "Subject " << i << "\n Pertinent Values: nTi = " << nTi << "// Rho = " << rhosAS[i] << std::endl;
     //std::cout << "Kappa = " << kappa << " // Eta = " << eta << " // gamma = " << gamma << "\n B = " << B << " // dpi_dae = " << dpi_dae << std::endl;
     //std::cout << "OutVec[0//1//2//3] = " << outvec[0] << "//" << outvec[1] << "//" << outvec[2] << "//" << outvec[3] << std::endl;
@@ -1373,9 +1414,9 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     outvec[3] = R::trigamma(vpsi*0.5+nTi-nBi);
     
     //Plugging In:
-    Ipp(0) -= (2)*vpsi*vpsi*vpsi*(R::digamma(vpsi)-R::digamma((0.5*vpsi))-
+    Ipp(0) -= vpsi*(R::digamma(vpsi)-R::digamma((0.5*vpsi))-
       R::digamma(vpsi+nTi)+0.5*(outvec[0]+outvec[1]));
-    Ipp(0) -= vpsi*vpsi*vpsi*vpsi*(R::trigamma(vpsi)-0.5*R::trigamma(0.5*vpsi)-
+    Ipp(0) -= vpsi*vpsi*(R::trigamma(vpsi)-0.5*R::trigamma(0.5*vpsi)-
       R::trigamma(vpsi+nTi)+0.25*(outvec[2]+outvec[3]));
   }
   
@@ -1410,9 +1451,14 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
   M2.block<3,2>(M,0)     = Iea;
   M2.block<1,2>((M+4),0) = Ipa;
   
+  OIMat.block(0,0,(M+5),(M+5)) = M1;
+  OIMat.block(0,(M+5),(M+5),2) = M2;
+  OIMat.block((M+5),0,2,(M+5)) = M2.transpose();
+  OIMat.block((M+5),(M+5),2,2) = Iaa;
+  
   // Checking the formation of M1 and M2:
-  /*std::cout << "M1 Matrix: \n" << M1 << std::endl;
-  std::cout << "M2 Matrix: \n" << M2 << std::endl;*/
+  //std::cout << "M1 Matrix: \n" << M1 << std::endl;
+  //std::cout << "M2 Matrix: \n" << M2 << std::endl;
   
   // Checking Invertibility
   Eigen::JacobiSVD<Eigen::MatrixXd> svd1(M1);
@@ -1420,10 +1466,13 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
   double cond1 = svd1.singularValues()(0) / svd1.singularValues()(svd1.singularValues().size()-1);
   double cond2 = svd2.singularValues()(0) / svd2.singularValues()(svd2.singularValues().size()-1);
   
-  //Rprintf("Checking Condition Numbers: Cond1- %.10f // Cond2- %.10f\n");
+  // Checking Positive Definiteness:
+  Eigen::LLT<Eigen::MatrixXd> lltOfA(OIMat);
   
-  // Score Test Values Computed //
-  if((cond1>(1/DBL_EPSILON))||(cond2>(1/DBL_EPSILON))){
+  if(lltOfA.info()==Eigen::NumericalIssue){
+    *score_val = -6.0;
+    *pval = 1.0;
+  } else if((cond1>(1/DBL_EPSILON))||(cond2>(1/DBL_EPSILON))){
     *score_val = -5.0;
     *pval = 1.0;
   } else {
@@ -1431,5 +1480,9 @@ void CisTrans_ObsScore(double* score_val, double* pval, double* ScoreVec_,
     *pval = R::pchisq(*score_val,2,0,0);
   }
   
+  if(std::isnan(*score_val)){
+    *score_val = -6.0;
+    *pval = 1.0;
+  }
   // This way if the score is -5.0, we know that we have invertibility issues.
 }
