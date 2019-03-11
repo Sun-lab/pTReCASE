@@ -577,10 +577,6 @@ int TReCASE_sfit(double* para0, double* ex1, double* ex2, double* X, int M,
     
     logLik0 = logLik1;
     
-    // likDiff = ((logLik1-ologLik)>=0) ? (logLik1-ologLik):(ologLik-logLik1);
-    
-    // printf("Iter (%d):\n LikDiff: %f \n K: %f\n E: %f\n G: %f\n Phi: %f\n Psi: %f\n parDiff: %f\n", g, likDiff, kappa, eta, gamma, phi_curr, psi_curr, parDiff);
-    
     if((parDiff<convg)){
       fail_stat = (fail_stat==3) ? (3):(0);
       break;
@@ -667,7 +663,7 @@ RcppExport SEXP TReCASE_mtest_only(SEXP Y_, SEXP Y1_, SEXP Y2_, SEXP Z_, SEXP X_
   
   fprintf(fcomp,"SNP\tGene\tTotalDuration\tKEG_Duration\tNB_Duration\tPsi_Duration\t");
   fprintf(fcomp,"LRT_Eta\tP_Eta\tLRT_Gamma\tP_Gamma\tLik\tLikEta\tLikGamma\tKappa\tEta\tGamma\t");
-  fprintf(fcomp,"Phi\tPsi\tFail_Full\tFail_Full_eta\tFail_full_gamma\tFail_Eta\tFail_Gamma\t");
+  fprintf(fcomp,"Phi\tPsi\tFail_Full\tFail_Full_eta\tFail_full_gamma\tFail_Eta\tFail_Gamma");
 
   for(k=0;k<M;k++){
     fprintf(fcomp,"\tCoeff_%d",k);
