@@ -1,22 +1,53 @@
-pTReCASE_multapp<-function(Y,Y1,Y2,Z,X,rhos,min_ASE_Total=8,
-                          min_nASE=10,eps=1e-5,convg=1e-5, 
-                          maxIter = 200, maxIter2 = 200,
-                          F_out = NULL,genot_Info,gene_start,gene_end,
-                          Perform_CT_co = 1e-3, CT_pco = 1e-3, Obs_Score = 1, useASE = 1,
-                          cis_window = 100000,gene_add=0){
+pTReCASE_multapp<-function(Y, Y1, Y2, Z, X, rhos, F_out, geno_pos, 
+                           gene_start, gene_end, min_ASE_Total=8, 
+                           min_nASE=10, eps=1e-5, convg=1e-5, 
+                           maxIter = 200, maxIter2 = 200, 
+                           Perform_CT_co = 1e-3, CT_pco = 1e-3, 
+                           Obs_Score = 1, useASE = 1, 
+                           cis_window = 100000, gene_add=0){
   #-------------------------------------------------------------------#
   # Specifying Placeholder Values for Older options                   #
   #-------------------------------------------------------------------#
   # Don't allow users to change these deprecated options but still 
   # passes them to the function where there are disregarded.
-  lik_convg = 1e-20
+  lik_convg   = 1e-20
   Testing_Ind = 0
-  SNP_Names = NULL
-  Gene_Names = NULL
+  SNP_Names   = NULL
+  Gene_Names  = NULL
   
   #-------------------------------------------------------------------#
-  # CLEANING INPUT                                                    #
+  # check input                                                    #
   #-------------------------------------------------------------------#
+  
+  if(any(is.na(Y))){
+    stop("Y has missing values")
+  }
+  
+  if(any(is.na(Y1))){
+    stop("Y1 has missing values")
+  }
+  
+  if(any(is.na(Y2))){
+    stop("Y2 has missing values")
+  }
+  
+  if(any(is.na(Z))){
+    stop("Z has missing values")
+  }
+  
+  if(any(is.na(X))){
+    stop("X has missing values")
+  }
+  
+  if(any(is.na(rhos))){
+    stop("rhos has missing values")
+  }
+  
+  if(nrow(Y)!=nrow(Z)){
+    stop("y and z have different lengths")
+  }
+  
+  
   if(nrow(Y)!=nrow(Z)){
     stop("y and z have different lengths")
   }
@@ -33,8 +64,8 @@ pTReCASE_multapp<-function(Y,Y1,Y2,Z,X,rhos,min_ASE_Total=8,
     stop("y1 and y2 have different dimensions.\n")
   }
   
-  if(length(genot_Info)!=ncol(Z)){
-    stop("geno_Info and Z have different dimensions")
+  if(length(geno_pos)!=ncol(Z)){
+    stop("geno_pos and Z have different dimensions")
   }
   
   if(length(gene_start)!=length(gene_end)){
@@ -66,7 +97,7 @@ pTReCASE_multapp<-function(Y,Y1,Y2,Z,X,rhos,min_ASE_Total=8,
   }
   
   if(Testing_Ind == 2 && is.null(F_out)){
-    F_out  = c("TReCASE_Compout.txt","Place_Holder")
+    F_out  = c("TReCASE_Compout.txt", "Place_Holder")
   }
   
   if(is.null(SNP_Names)){
@@ -86,10 +117,13 @@ pTReCASE_multapp<-function(Y,Y1,Y2,Z,X,rhos,min_ASE_Total=8,
   lctvec  = lgamma(ctvec+1)
   lrctvec = lgamma(rctvec+1)
 
-  outList = .Call("TReCASE_mtest_only",Y,Y1,Y2,Z,X,rhos,min_ASE_Total,
-                  min_nASE,eps,convg,lik_convg,maxIter,maxIter2,F_out,SNP_Names,Gene_Names,
-                  ctvec,lctvec,rctvec,lrctvec,maxAS,Perform_CT_co,CT_pco,Obs_Score,useASE,
-                  genot_Info,gene_start,gene_end,cis_window,gene_add)
+  outList = .Call("TReCASE_mtest_only", Y, Y1, Y2, Z, X, rhos, 
+                  min_ASE_Total, min_nASE,eps, convg, lik_convg,
+                  maxIter, maxIter2, F_out, SNP_Names, Gene_Names,
+                  ctvec, lctvec, rctvec, lrctvec, maxAS, 
+                  Perform_CT_co, CT_pco, Obs_Score, useASE, 
+                  geno_pos, gene_start, gene_end, cis_window, 
+                  gene_add)
   
   return(outList)
 }

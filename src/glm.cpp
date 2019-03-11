@@ -67,7 +67,7 @@ void comp_offset(double kappa, double eta, double gamma, double* ex1, double* of
 	n_subj = ceil(ex1[0]-0.5);
 	n0 = ceil(ex1[2]-0.5);
 	n1 = ceil(ex1[3]-0.5);
-	
+		
 	// Function Body
 	// ex1 contains our (sorted) data!
 	for(i=0;i<n0;i++){
@@ -347,10 +347,15 @@ int IRLS_Pois_fit(double* y, double* X, int n, int M, double* offset,
 	// Beta should already be initialized at some value
 	Resid = ((Yvec.array()+0.01).log()-Offvec.array());
 	Beta = Xmat.colPivHouseholderQr().solve(Resid);
+	
+  //std::cout << "Here is the matrix Yvec:\n" << Yvec << std::endl;
+  //std::cout << "Here is the vector Offvec:\n" << Offvec << std::endl;
+
 	//for(i=0;i<M;i++){ Beta(i) = Beta_out[i];}
 	Etavec = Xmat*Beta;
 	Fitvec = (Etavec+Offvec).array().exp();
 	Resid  = Yvec - Fitvec;
+
 
 	for(i=0;i<n;i++){
 		Weightvec(i) = dfunc(Fitvec(i));
@@ -365,7 +370,9 @@ int IRLS_Pois_fit(double* y, double* X, int n, int M, double* offset,
 		
 		// Compute the Updated X
 		// I wonder if this will compile, but it should.
-		for(i=0;i<n;i++){Xnew.row(i) = Xmat.row(i).array()/sqrt(Weightvec(i));}
+		for(i=0;i<n;i++){
+      Xnew.row(i) = Xmat.row(i).array()/sqrt(Weightvec(i));
+    }
 		
 		// QR decomposition
 		Betatmp = Beta;

@@ -10,5 +10,5 @@ Description: The pTReCASE package simultaneously estimates tumor- and normal-spe
 License: GPL (>=2.0)
 Depends: Rcpp (>= 0.10.4), RcppEigen (>= 0.3.2.0.2)
 LinkingTo: Rcpp, RcppEigen
-Packaged: 2019-03-08 22:02:38 UTC; wsun
+Packaged: 2019-03-11 04:54:20 UTC; wsun
 NeedsCompilation: yes
